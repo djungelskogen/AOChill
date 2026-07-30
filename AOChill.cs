@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,172 +11,279 @@ class Program
     static extern int EmptyWorkingSet(IntPtr hwProc);
 
     [DllImport("kernel32.dll")]
-    static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
+    static extern bool SetProcessWorkingSetSize(
+        IntPtr hProcess,
+        IntPtr dwMinimumWorkingSetSize,
+        IntPtr dwMaximumWorkingSetSize);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
+    [DllImport("kernel32.dll")]
     static extern bool GetPhysicallyInstalledSystemMemory(out ulong totalMemoryInKilobytes);
 
-    private static bool isLooping = false;
-    private static CancellationTokenSource cts;
-    private static int loopIntervalMs = 60000;
-    private static string profileName = "Standard Balance";
 
-    static void Main(string[] args)
+    static bool isLooping = false;
+    static CancellationTokenSource? cts;
+
+    static int loopIntervalMs = 120000;
+    static string profileName = "Balanced";
+
+
+    static readonly string[] SafeTargets =
     {
-        Console.Title = "AO";
-        DetectHardwareAndConfigure();
-        
+        "chrome",
+        "msedge",
+        "discord",
+        "steam",
+        "epicgameslauncher",
+        "spotify",
+        "bloxstrap",
+        "robloxplayerbeta"
+    };
+
+
+    static void Main()
+    {
+        Console.Title = "AOChill v2.1";
+
+        if (!IsAdministrator())
+        {
+            Console.WriteLine("Please run AOChill as Administrator.");
+            Console.ReadKey();
+            return;
+        }
+
+
+        DetectHardware();
+
+
         while (true)
         {
             Console.Clear();
+
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("==================================================");
-            Console.WriteLine("                  AOChill v2.0                    ");
-            Console.WriteLine("==================================================");
+            Console.WriteLine("===============================");
+            Console.WriteLine("        AOChill v2.1");
+            Console.WriteLine("===============================");
             Console.ResetColor();
-            
-            DisplayHardwareDiagnostics();
-            
-            Console.WriteLine("\n 1. Run Core Memory Optimization Now");
-            Console.WriteLine($" 2. Toggle Background Engine (Current: {(isLooping ? "ACTIVE" : "IDLE")})");
-            Console.WriteLine(" 3. Exit");
-            Console.Write("\nSelect an option: ");
-            
-            string choice = Console.ReadLine();
-            
-            if (choice == "1")
+
+
+            DisplayInfo();
+
+
+            Console.WriteLine();
+            Console.WriteLine("1. Run Safe Optimization");
+            Console.WriteLine("2. Toggle Background Engine");
+            Console.WriteLine("3. Exit");
+
+            Console.Write("\nChoice: ");
+
+            string? input = Console.ReadLine();
+
+
+            if (input == "1")
             {
                 RunOptimization();
-                Console.WriteLine("\nOptimization deployed. Press any key to return to menu...");
+
+                Console.WriteLine("\nDone. Press key...");
                 Console.ReadKey();
             }
-            else if (choice == "2")
+
+
+            else if (input == "2")
             {
                 ToggleLoop();
+                Thread.Sleep(1000);
             }
-            else if (choice == "3")
+
+
+            else if (input == "3")
             {
-                if (isLooping) StopLoop();
+                StopLoop();
                 break;
             }
         }
     }
 
-    static void DetectHardwareAndConfigure()
+
+
+    static bool IsAdministrator()
     {
-        try
+        WindowsIdentity identity = WindowsIdentity.GetCurrent();
+
+        WindowsPrincipal principal =
+            new WindowsPrincipal(identity);
+
+        return principal.IsInRole(
+            WindowsBuiltInRole.Administrator);
+    }
+
+
+
+    static void DetectHardware()
+    {
+        if (!GetPhysicallyInstalledSystemMemory(out ulong kb))
+            return;
+
+
+        double ram =
+            kb / 1024.0 / 1024.0;
+
+
+        if (ram <= 4)
         {
-            if (GetPhysicallyInstalledSystemMemory(out ulong totalKb))
-            {
-                double totalGb = totalKb / 1024.0 / 1024.0;
-                if (totalGb <= 4.5)
-                {
-                    loopIntervalMs = 30000;
-                    profileName = "Aggressive Extreme (Low RAM Guard)";
-                }
-                else if (totalGb <= 8.5)
-                {
-                    loopIntervalMs = 45000;
-                    profileName = "Moderate Response";
-                }
-                else
-                {
-                    loopIntervalMs = 90000;
-                    profileName = "Lightweight Passive Maintenance";
-                }
-            }
+            loopIntervalMs = 90000;
+            profileName = "Low RAM Mode";
         }
-        catch
+
+        else if (ram <= 8)
         {
-            loopIntervalMs = 60000;
-            profileName = "Fallback Safe Default";
+            loopIntervalMs = 120000;
+            profileName = "Balanced Mode";
+        }
+
+        else
+        {
+            loopIntervalMs = 180000;
+            profileName = "Light Mode";
         }
     }
 
-    static void DisplayHardwareDiagnostics()
+
+
+
+    static void DisplayInfo()
     {
-        Console.ForegroundColor = ConsoleColor.DarkGray;
-        if (GetPhysicallyInstalledSystemMemory(out ulong totalKb))
+        if(GetPhysicallyInstalledSystemMemory(out ulong kb))
         {
-            double totalGb = Math.Round(totalKb / 1024.0 / 1024.0, 2);
-            double estimatedVram = Math.Round(totalGb * 0.5, 2);
-            Console.WriteLine($"Detected Hardware Capacity: {totalGb} GB Physical System RAM");
-            Console.WriteLine($"Dynamic Allocation Target : Up to {estimatedVram} GB Unified Video Cache Buffer");
+            double ram =
+                Math.Round(kb / 1024.0 / 1024.0,2);
+
+            Console.WriteLine($"RAM Detected: {ram} GB");
         }
-        Console.WriteLine($"Active Optimization Profile: {profileName} (Interval: {loopIntervalMs / 1000}s)");
-        Console.ResetColor();
-        Console.WriteLine("==================================================");
+
+
+        Console.WriteLine(
+            $"Profile: {profileName}");
+
+        Console.WriteLine(
+            $"Loop Interval: {loopIntervalMs / 1000}s");
     }
+
+
+
+
 
     static void RunOptimization()
     {
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("\n[~] Executing native garbage eviction loops...");
-        Console.ResetColor();
+        Console.WriteLine("\nScanning safe applications...");
 
-        Process[] processes = Process.GetProcesses();
-        int optimizedCount = 0;
+        int count = 0;
 
-        foreach (Process proc in processes)
+
+        foreach(Process proc in Process.GetProcesses())
         {
             try
             {
-                if (proc.Id == 0 || proc.ProcessName == "System" || proc.ProcessName == "Idle" || 
-                    proc.ProcessName == "csrss" || proc.ProcessName == "explorer" || 
-                    proc.ProcessName.Contains("AO")) 
+                string name =
+                    proc.ProcessName.ToLower();
+
+
+                if(!Array.Exists(
+                    SafeTargets,
+                    x => name.Contains(x)))
                     continue;
 
-                SetProcessWorkingSetSize(proc.Handle, (IntPtr)(-1), (IntPtr)(-1));
+
+
+                SetProcessWorkingSetSize(
+                    proc.Handle,
+                    (IntPtr)(-1),
+                    (IntPtr)(-1));
+
+
                 EmptyWorkingSet(proc.Handle);
-                optimizedCount++;
+
+
+                count++;
+
+                Console.WriteLine(
+                    $"Optimized: {proc.ProcessName}");
             }
+
+
             catch
             {
+
             }
         }
+
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
 
-        Console.ForegroundColor = ConsoleColor.Green;
-        Console.WriteLine($"[_] Reset physical constraints for {optimizedCount} background architectures.");
-        Console.ResetColor();
+
+        Console.WriteLine(
+            $"Finished. {count} apps optimized.");
     }
+
+
+
 
     static void ToggleLoop()
     {
-        if (isLooping)
+        if(isLooping)
         {
             StopLoop();
-            Console.WriteLine("\nBackground processing suspended.");
+            Console.WriteLine(
+                "Background engine stopped.");
         }
+
         else
         {
             isLooping = true;
-            cts = new CancellationTokenSource();
-            Task.Run(() => BackgroundLoopWorker(cts.Token));
-            Console.WriteLine("\nBackground execution threaded successfully.");
+
+            cts =
+            new CancellationTokenSource();
+
+
+            Task.Run(() =>
+            BackgroundWorker(cts.Token));
+
+
+            Console.WriteLine(
+                "Background engine started.");
         }
-        Thread.Sleep(1500);
     }
+
+
 
     static void StopLoop()
     {
         isLooping = false;
+
         cts?.Cancel();
+
         cts?.Dispose();
     }
 
-    static async Task BackgroundLoopWorker(CancellationToken token)
+
+
+
+    static async Task BackgroundWorker(
+        CancellationToken token)
     {
-        while (!token.IsCancellationRequested)
+        while(!token.IsCancellationRequested)
         {
             RunOptimization();
+
+
             try
             {
-                await Task.Delay(loopIntervalMs, token);
+                await Task.Delay(
+                    loopIntervalMs,
+                    token);
             }
-            catch (TaskCanceledException)
+
+            catch
             {
                 break;
             }
