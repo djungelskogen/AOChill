@@ -1,9 +1,9 @@
-# AOChill v2.0
+# AOChill v2.1
 An advanced real-time RAM and shared VRAM optimization engine built in C# for low-end PCs and laptops.
 
 ⚠️ **!!! TESTING PHASE !!!**
 
-*This program has not been tested yet use for your own risk*
+*This program has not been tested yet use for your own risk, may cause stutters*
 *Requirements: This optimization tool requires the .NET 6 Desktop Runtime. If you use Bloxstrap, you already have this installed! Otherwise, download it at dotnet.microsoft.com.*
 
 ---
