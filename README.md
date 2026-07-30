@@ -1,4 +1,4 @@
-# AOChill v3.1
+# AOChill v3.1 - Alternate Optimization
 An advanced real-time RAM and shared VRAM optimization engine built in C# for low-end PCs and laptops.
 
 ⚠️ **!!! TESTING PHASE !!!**
