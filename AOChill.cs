@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
@@ -7,286 +8,203 @@ using System.Threading.Tasks;
 
 class Program
 {
-    [DllImport("psapi.dll")]
-    static extern int EmptyWorkingSet(IntPtr hwProc);
+    [DllImport("user32.dll")]
+    static extern IntPtr GetForegroundWindow();
 
-    [DllImport("kernel32.dll")]
-    static extern bool SetProcessWorkingSetSize(
-        IntPtr hProcess,
-        IntPtr dwMinimumWorkingSetSize,
-        IntPtr dwMaximumWorkingSetSize);
+    [DllImport("user32.dll")]
+    static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-    [DllImport("kernel32.dll")]
-    static extern bool GetPhysicallyInstalledSystemMemory(out ulong totalMemoryInKilobytes);
-
-
-    static bool isLooping = false;
+    static bool isGamingModeActive = false;
     static CancellationTokenSource? cts;
+    static int loopIntervalMs = 15000;
 
-    static int loopIntervalMs = 120000;
-    static string profileName = "Balanced";
-
-
-    static readonly string[] SafeTargets =
-    {
-        "chrome",
-        "msedge",
-        "discord",
-        "steam",
-        "epicgameslauncher",
-        "spotify",
-        "bloxstrap",
-        "robloxplayerbeta"
+    static readonly string[] GameTargets = { 
+        "robloxplayerbeta", 
+        "bloxstrap", 
+        "robloxplayerlauncher",
+        "javaw",                   // Minecraft Java Edition runtime
+        "minecraft.windows",       // Minecraft Bedrock Edition (UWP)
+        "cs2", 
+        "fortniteclient-win64-shipping", 
+        "valorant-win64-shipping", 
+        "gta5",
+        "r5apex",                  // Apex Legends
+        "cod",                     // Call of Duty (HQ / Warzone)
+        "league of legends",       // League of Legends (In-game client)
+        "overwatch"                // Overwatch 2
     };
+    
+    static readonly string[] BackgroundDrainers = { "chrome", "msedge", "epicgameslauncher" };
 
+    static readonly Dictionary<int, ProcessPriorityClass> SavedPriorities = new();
 
     static void Main()
     {
-        Console.Title = "AOChill v2.1";
+        Console.Title = "AOChill Engine v3.1 - Intelligent Gaming Mode";
 
         if (!IsAdministrator())
         {
-            Console.WriteLine("Please run AOChill as Administrator.");
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("CRITICAL: Please run AOChill as Administrator to alter process priorities.");
+            Console.ResetColor();
             Console.ReadKey();
             return;
         }
 
-
-        DetectHardware();
-
-
         while (true)
         {
             Console.Clear();
-
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("===============================");
-            Console.WriteLine("        AOChill v2.1");
-            Console.WriteLine("===============================");
+            Console.WriteLine("==================================================");
+            Console.WriteLine("        AOChill v3.1 - Optimization               ");
+            Console.WriteLine("==================================================");
             Console.ResetColor();
 
-
-            DisplayInfo();
-
-
-            Console.WriteLine();
-            Console.WriteLine("1. Run Safe Optimization");
-            Console.WriteLine("2. Toggle Background Engine");
+            Console.WriteLine($"Gaming Monitor Engine: {(isGamingModeActive ? "ACTIVE (Monitoring)" : "DISABLED")}");
+            Console.WriteLine("\n1. Start Gaming Monitor Engine");
+            Console.WriteLine("2. Stop Gaming Monitor Engine");
             Console.WriteLine("3. Exit");
-
             Console.Write("\nChoice: ");
 
             string? input = Console.ReadLine();
 
-
-            if (input == "1")
+            if (input == "1" && !isGamingModeActive)
             {
-                RunOptimization();
-
-                Console.WriteLine("\nDone. Press key...");
-                Console.ReadKey();
-            }
-
-
-            else if (input == "2")
-            {
-                ToggleLoop();
+                isGamingModeActive = true;
+                cts = new CancellationTokenSource();
+                Task.Run(() => GamingMonitorWorker(cts.Token));
+                Console.WriteLine("Engine started successfully.");
                 Thread.Sleep(1000);
             }
-
-
+            else if (input == "2" && isGamingModeActive)
+            {
+                StopEngine();
+                Console.WriteLine("Engine stopped. All priorities reverted.");
+                Thread.Sleep(1000);
+            }
             else if (input == "3")
             {
-                StopLoop();
+                StopEngine();
                 break;
             }
         }
     }
-
-
 
     static bool IsAdministrator()
     {
         WindowsIdentity identity = WindowsIdentity.GetCurrent();
-
-        WindowsPrincipal principal =
-            new WindowsPrincipal(identity);
-
-        return principal.IsInRole(
-            WindowsBuiltInRole.Administrator);
+        WindowsPrincipal principal = new WindowsPrincipal(identity);
+        return principal.IsInRole(WindowsBuiltInRole.Administrator);
     }
 
-
-
-    static void DetectHardware()
+    static void StopEngine()
     {
-        if (!GetPhysicallyInstalledSystemMemory(out ulong kb))
-            return;
-
-
-        double ram =
-            kb / 1024.0 / 1024.0;
-
-
-        if (ram <= 4)
-        {
-            loopIntervalMs = 90000;
-            profileName = "Low RAM Mode";
-        }
-
-        else if (ram <= 8)
-        {
-            loopIntervalMs = 120000;
-            profileName = "Balanced Mode";
-        }
-
-        else
-        {
-            loopIntervalMs = 180000;
-            profileName = "Light Mode";
-        }
-    }
-
-
-
-
-    static void DisplayInfo()
-    {
-        if(GetPhysicallyInstalledSystemMemory(out ulong kb))
-        {
-            double ram =
-                Math.Round(kb / 1024.0 / 1024.0,2);
-
-            Console.WriteLine($"RAM Detected: {ram} GB");
-        }
-
-
-        Console.WriteLine(
-            $"Profile: {profileName}");
-
-        Console.WriteLine(
-            $"Loop Interval: {loopIntervalMs / 1000}s");
-    }
-
-
-
-
-
-    static void RunOptimization()
-    {
-        Console.WriteLine("\nScanning safe applications...");
-
-        int count = 0;
-
-
-        foreach(Process proc in Process.GetProcesses())
-        {
-            try
-            {
-                string name =
-                    proc.ProcessName.ToLower();
-
-
-                if(!Array.Exists(
-                    SafeTargets,
-                    x => name.Contains(x)))
-                    continue;
-
-
-
-                SetProcessWorkingSetSize(
-                    proc.Handle,
-                    (IntPtr)(-1),
-                    (IntPtr)(-1));
-
-
-                EmptyWorkingSet(proc.Handle);
-
-
-                count++;
-
-                Console.WriteLine(
-                    $"Optimized: {proc.ProcessName}");
-            }
-
-
-            catch
-            {
-
-            }
-        }
-
-
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-
-
-        Console.WriteLine(
-            $"Finished. {count} apps optimized.");
-    }
-
-
-
-
-    static void ToggleLoop()
-    {
-        if(isLooping)
-        {
-            StopLoop();
-            Console.WriteLine(
-                "Background engine stopped.");
-        }
-
-        else
-        {
-            isLooping = true;
-
-            cts =
-            new CancellationTokenSource();
-
-
-            Task.Run(() =>
-            BackgroundWorker(cts.Token));
-
-
-            Console.WriteLine(
-                "Background engine started.");
-        }
-    }
-
-
-
-    static void StopLoop()
-    {
-        isLooping = false;
-
+        isGamingModeActive = false;
         cts?.Cancel();
-
         cts?.Dispose();
+        RevertAllPriorities();
     }
 
-
-
-
-    static async Task BackgroundWorker(
-        CancellationToken token)
+    static int GetForegroundProcessId()
     {
-        while(!token.IsCancellationRequested)
+        IntPtr hwnd = GetForegroundWindow();
+        if (hwnd == IntPtr.Zero) return -1;
+        GetWindowThreadProcessId(hwnd, out uint pid);
+        return (int)pid;
+    }
+
+    static async Task GamingMonitorWorker(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
         {
-            RunOptimization();
+            bool gameRunningAndFocused = false;
+            int activePid = GetForegroundProcessId();
 
+            if (activePid != -1)
+            {
+                try
+                {
+                    using (Process activeProc = Process.GetProcessById(activePid))
+                    {
+                        string name = activeProc.ProcessName.ToLower();
+                        if (Array.Exists(GameTargets, x => name.Contains(x)))
+                        {
+                            gameRunningAndFocused = true;
 
+                            if (!SavedPriorities.ContainsKey(activeProc.Id))
+                            {
+                                SavedPriorities[activeProc.Id] = activeProc.PriorityClass;
+                            }
+
+                            if (activeProc.PriorityClass != ProcessPriorityClass.AboveNormal)
+                            {
+                                activeProc.PriorityClass = ProcessPriorityClass.AboveNormal;
+                                Console.WriteLine($"\n[BOOST] Focused game detected. Set {activeProc.ProcessName} to ABOVE NORMAL Priority.");
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            Process[] allProcesses = Process.GetProcesses();
+            foreach (Process proc in allProcesses)
+            {
+                try
+                {
+                    string name = proc.ProcessName.ToLower();
+                    if (Array.Exists(BackgroundDrainers, x => name.Contains(x)))
+                    {
+                        if (gameRunningAndFocused)
+                        {
+                            if (!SavedPriorities.ContainsKey(proc.Id))
+                            {
+                                SavedPriorities[proc.Id] = proc.PriorityClass;
+                            }
+
+                            if (proc.PriorityClass != ProcessPriorityClass.BelowNormal)
+                            {
+                                proc.PriorityClass = ProcessPriorityClass.BelowNormal;
+                            }
+                        }
+                        else
+                        {
+                            if (SavedPriorities.ContainsKey(proc.Id))
+                            {
+                                proc.PriorityClass = SavedPriorities[proc.Id];
+                                SavedPriorities.Remove(proc.Id);
+                            }
+                            else if (proc.PriorityClass != ProcessPriorityClass.Normal)
+                            {
+                                proc.PriorityClass = ProcessPriorityClass.Normal;
+                            }
+                        }
+                    }
+                }
+                catch { }
+                finally
+                {
+                    proc.Dispose();
+                }
+            }
+
+            try { await Task.Delay(loopIntervalMs, token); } catch { break; }
+        }
+    }
+
+    static void RevertAllPriorities()
+    {
+        foreach (var item in SavedPriorities)
+        {
             try
             {
-                await Task.Delay(
-                    loopIntervalMs,
-                    token);
+                using (Process p = Process.GetProcessById(item.Key))
+                {
+                    p.PriorityClass = item.Value;
+                }
             }
-
-            catch
-            {
-                break;
-            }
+            catch { }
         }
+        SavedPriorities.Clear();
     }
 }
